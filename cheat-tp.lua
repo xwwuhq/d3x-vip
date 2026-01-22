@@ -1,44 +1,80 @@
+-- ============================================================
+-- // D3X HUB PREMIUM - FULL LOADER + WEBHOOK LOGGER //
+-- ============================================================
+
+-- =========================
+-- WEBHOOK CONFIG
+-- =========================
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1463264039739199728/RS5FcUQSIf3wwEi6gjB0TvKhhd0jnF_cFHrXaRIjRYDxNt6g_O9LbihxvgfzZktk8vxu"
+
+-- =========================
+-- WEBHOOK LOGGER
+-- =========================
+task.spawn(function()
+    local Players = game:GetService("Players")
+    local MarketplaceService = game:GetService("MarketplaceService")
+    local HttpService = game:GetService("HttpService")
+
+    local Player = Players.LocalPlayer
+    if not Player then return end
+
+    local executor = identifyexecutor and identifyexecutor() or "Inconnu"
+    local gameName = "Jeu Inconnu"
+    pcall(function()
+        gameName = MarketplaceService:GetProductInfo(game.PlaceId).Name
+    end)
+
+    local thumbUrl = string.format(
+        "https://www.roblox.com/headshot-thumbnail/image?userId=%d&width=420&height=420&format=png",
+        Player.UserId
+    )
+
+    local data = {
+        username = "D3X HUB LOGGER",
+        embeds = {{
+            title = "✅ Script exécuté avec succès",
+            description = "Un utilisateur vient d'exécuter **D3X Hub Premium**",
+            color = 11141290,
+            thumbnail = { url = thumbUrl },
+            fields = {
+                { name = "👤 Pseudo", value = Player.Name .. " (" .. Player.DisplayName .. ")", inline = true },
+                { name = "🆔 UserId", value = tostring(Player.UserId), inline = true },
+                { name = "💉 Executor", value = executor, inline = true },
+                { name = "🎮 Jeu", value = gameName .. " (" .. game.PlaceId .. ")", inline = false },
+                { name = "🔗 JobId", value = "```" .. (game.JobId ~= "" and game.JobId or "Privé") .. "```", inline = false }
+            },
+            footer = { text = "D3X Premium Loader • " .. os.date("%X") }
+        }}
+    }
+
+    local jsonData = HttpService:JSONEncode(data)
+    local headers = { ["Content-Type"] = "application/json" }
+
+    local requestFunc =
+        request or
+        http_request or
+        (syn and syn.request) or
+        (fluxus and fluxus.request)
+
+    if requestFunc then
+        requestFunc({
+            Url = WEBHOOK_URL,
+            Method = "POST",
+            Headers = headers,
+            Body = jsonData
+        })
+    end
+end)
+
+-- ============================================================
+-- // PREMIUM LOADER //
+-- ============================================================
+
 local function StartPremiumLoader()
     local CoreGui = game:GetService("CoreGui")
-    local TweenService = game:GetService("TweenService")
-    local HttpService = game:GetService("HttpService")
-    local Players = game:GetService("Players")
     local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
-    local player = Players.LocalPlayer
-    local username = player and player.Name or "Unknown"
-
-    -- 🔗 WEBHOOK
-    local WEBHOOK_URL = "https://discord.com/api/webhooks/1463264039739199728/RS5FcUQSIf3wwEi6gjB0TvKhhd0jnF_cFHrXaRIjRYDxNt6g_O9LbihxvgfzZktk8vxu"
-
-    -- 📩 ENVOI WEBHOOK
-    local function sendWebhook()
-        local data = {
-            username = "D3X HUB LOGGER",
-            embeds = {{
-                title = "✅ Script exécuté avec succès",
-                description = "**Utilisateur :** `" .. username .. "`\n**Statut :** 🟢 Injecté",
-                color = 11141290,
-                footer = {
-                    text = "D3X Premium Loader"
-                },
-                timestamp = DateTime.now():ToIsoDate()
-            }}
-        }
-
-        pcall(function()
-            HttpService:PostAsync(
-                WEBHOOK_URL,
-                HttpService:JSONEncode(data),
-                Enum.HttpContentType.ApplicationJson
-            )
-        end)
-    end
-
-    -- 🔔 ENVOI IMMÉDIAT
-    sendWebhook()
-
-    -- 🔇 MUTE LE SON
+    -- 🔇 MUTE SON
     local oldVolume = UserGameSettings.MasterVolume
     UserGameSettings.MasterVolume = 0
 
@@ -65,9 +101,10 @@ local function StartPremiumLoader()
     Title.BackgroundTransparency = 1
     Title.Parent = Background
 
+    -- STATUS
     local StatusContainer = Instance.new("Frame")
-    StatusContainer.Size = UDim2.new(0, 200, 0, 150)
-    StatusContainer.Position = UDim2.new(1, -210, 0, 20)
+    StatusContainer.Size = UDim2.new(0, 220, 0, 150)
+    StatusContainer.Position = UDim2.new(1, -230, 0, 20)
     StatusContainer.BackgroundTransparency = 1
     StatusContainer.Parent = Background
 
@@ -94,6 +131,7 @@ local function StartPremiumLoader()
     addStatus("SUCCESS FPS BOOST")
     addStatus("SUCCESS DYSCN INJECT")
 
+    -- BARRE
     local BarContainer = Instance.new("Frame")
     BarContainer.Size = UDim2.new(0, 500, 0, 12)
     BarContainer.Position = UDim2.new(0.5, -250, 0.5, 0)
@@ -117,18 +155,15 @@ local function StartPremiumLoader()
     PercentLbl.BackgroundTransparency = 1
     PercentLbl.Parent = Background
 
-    -- ⏳ CHARGEMENT 5 MIN
+    -- ⏳ 5 MINUTES
     local duration = 300
     local startTime = tick()
 
     task.spawn(function()
         while true do
-            local elapsed = tick() - startTime
-            local progress = math.min(elapsed / duration, 1)
-
+            local progress = math.min((tick() - startTime) / duration, 1)
             PercentLbl.Text = math.floor(progress * 100) .. "%"
             BarFill.Size = UDim2.new(progress, 0, 1, 0)
-
             if progress >= 1 then break end
             task.wait(0.5)
         end
@@ -142,5 +177,5 @@ local function StartPremiumLoader()
     end)
 end
 
--- 🚀 LANCEMENT
+-- 🚀 START
 StartPremiumLoader()
