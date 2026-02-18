@@ -1,21 +1,94 @@
+-- SERVICES
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-
+local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 
+-- PARAMÈTRES DU GRAB
 local GRAB_RADIUS = 20
 local GRAB_COOLDOWN = 0.15
 local GRAB_DURATION = 1.5
 
+-- VARIABLES D'ÉTAT
+local isOn = false -- Le script est éteint par défaut
+local isActivelyGrabbing = false
+local lastGrabAttempt = 0
 local allAnimalsCache = {}
 local cachedPrompts = {}
 local internalGrabCache = {}
 
-local isActivelyGrabbing = false
-local lastGrabAttempt = 0
+----------------------------------------------------------------                
+-- PARTIE UI (INTERFACE STYLÉE)
+----------------------------------------------------------------
 
--- AJOUT
-local AutoGrabEnabled = false
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "GrabberUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Fond du bouton (Le rail)
+local bg = Instance.new("Frame")
+bg.Name = "Background"
+bg.Size = UDim2.new(0, 60, 0, 30)
+bg.Position = UDim2.new(0.5, -30, 0.1, 0) -- En haut au milieu
+bg.BackgroundColor3 = Color3.fromRGB(200, 200, 200)
+bg.BorderSizePixel = 0
+bg.Parent = screenGui
+
+local uiCorner = Instance.new("UICorner")
+uiCorner.CornerRadius = UDim.new(1, 0)
+uiCorner.Parent = bg
+
+-- Le cercle coulissant
+local circle = Instance.new("Frame")
+circle.Name = "Circle"
+circle.Size = UDim2.new(0, 26, 0, 26)
+circle.Position = UDim2.new(0, 2, 0.5, -13)
+circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+circle.BorderSizePixel = 0
+circle.Parent = bg
+
+local circleCorner = Instance.new("UICorner")
+circleCorner.CornerRadius = UDim.new(1, 0)
+circleCorner.Parent = circle
+
+-- Le bouton invisible pour cliquer
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(1, 0, 1, 0)
+toggleBtn.BackgroundTransparency = 1
+toggleBtn.Text = ""
+toggleBtn.Parent = bg
+
+-- Label d'état
+local label = Instance.new("TextLabel")
+label.Size = UDim2.new(0, 100, 0, 20)
+label.Position = UDim2.new(0.5, -50, 1, 5)
+label.BackgroundTransparency = 1
+label.Text = "AUTO-GRAB: OFF"
+label.TextColor3 = Color3.fromRGB(255, 255, 255)
+label.Font = Enum.Font.GothamBold
+label.TextSize = 12
+label.Parent = bg
+
+-- ANIMATION DU BOUTON
+local function toggleUI()
+	isOn = not isOn
+	
+	local targetPos = isOn and UDim2.new(1, -28, 0.5, -13) or UDim2.new(0, 2, 0.5, -13)
+	local targetColor = isOn and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(200, 200, 200)
+	
+	TweenService:Create(circle, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Position = targetPos}):Play()
+	TweenService:Create(bg, TweenInfo.new(0.3), {BackgroundColor3 = targetColor}):Play()
+	
+	label.Text = "AUTO-GRAB: " .. (isOn and "ON" or "OFF")
+	label.TextColor3 = isOn and Color3.fromRGB(85, 255, 127) or Color3.fromRGB(255, 255, 255)
+end
+
+toggleBtn.MouseButton1Click:Connect(toggleUI)
+
+----------------------------------------------------------------                
+-- LOGIQUE DU SCRIPT ORIGINAL (MODIFIÉE)
+----------------------------------------------------------------
 
 if not getconnections then
 	getconnections = function() return {} end
@@ -49,242 +122,96 @@ end
 
 local function findPromptForAnimal(animalData)
 	if not animalData then return nil end
-
 	if cachedPrompts[animalData.uid] and cachedPrompts[animalData.uid].Parent then
-		if isGrabPrompt(cachedPrompts[animalData.uid]) then
-			return cachedPrompts[animalData.uid]
-		else
-			cachedPrompts[animalData.uid] = nil
-		end
+		return cachedPrompts[animalData.uid]
 	end
 
-	local plots = workspace:FindFirstChild("Plots")
-	if not plots then return nil end
+	local plot = workspace.Plots:FindFirstChild(animalData.plot)
+	local podiums = plot and plot:FindFirstChild("AnimalPodiums")
+	local podium = podiums and podiums:FindFirstChild(animalData.slot)
+	local spawn = podium and podium:FindFirstChild("Base") and podium.Base:FindFirstChild("Spawn")
 
-	local plot = plots:FindFirstChild(animalData.plot)
-	if not plot then return nil end
-
-	local podiums = plot:FindFirstChild("AnimalPodiums")
-	if not podiums then return nil end
-
-	local podium = podiums:FindFirstChild(animalData.slot)
-	if not podium then return nil end
-
-	local base = podium:FindFirstChild("Base")
-	if not base then return nil end
-
-	local spawn = base:FindFirstChild("Spawn")
-	if not spawn then return nil end
-
-	for _, p in ipairs(spawn:GetDescendants()) do
-		if p:IsA("ProximityPrompt") and isGrabPrompt(p) then
-			cachedPrompts[animalData.uid] = p
-			return p
+	if spawn then
+		for _, p in ipairs(spawn:GetDescendants()) do
+			if p:IsA("ProximityPrompt") and isGrabPrompt(p) then
+				cachedPrompts[animalData.uid] = p
+				return p
+			end
 		end
 	end
-
 	return nil
 end
 
-local function buildGrabCallbacks(prompt)
-	if internalGrabCache[prompt] then return internalGrabCache[prompt] end
-
-	local data = {hold = {}, trigger = {}, ready = true}
-
-	local ok, conns = pcall(getconnections, prompt.PromptButtonHoldBegan)
-	if ok and conns then
-		for _, c in ipairs(conns) do
-			if type(c.Function) == "function" then
-				table.insert(data.hold, c.Function)
-			end
-		end
-	end
-
-	local ok2, conns2 = pcall(getconnections, prompt.Triggered)
-	if ok2 and conns2 then
-		for _, c in ipairs(conns2) do
-			if type(c.Function) == "function" then
-				table.insert(data.trigger, c.Function)
-			end
-		end
-	end
-
-	internalGrabCache[prompt] = data
-	return data
-end
-
-local function runCallbacks(list)
-	for _, fn in ipairs(list) do
-		task.spawn(fn)
-	end
-end
-
 local function executeGrab(prompt)
-	local data = buildGrabCallbacks(prompt)
-	if not data or not data.ready then return end
-
-	data.ready = false
 	isActivelyGrabbing = true
 	local start = tick()
-
-	task.spawn(function()
-		runCallbacks(data.hold)
-
-		while tick() - start < GRAB_DURATION do
-			task.wait(0.03)
-		end
-
-		runCallbacks(data.trigger)
-
-		isActivelyGrabbing = false
-		data.ready = true
+	
+	-- Simulation de maintien (hold)
+	pcall(function()
+		local conns = getconnections(prompt.PromptButtonHoldBegan)
+		for _, c in ipairs(conns) do task.spawn(c.Function) end
 	end)
+
+	task.wait(GRAB_DURATION)
+
+	-- Déclenchement (trigger)
+	pcall(function()
+		local conns = getconnections(prompt.Triggered)
+		for _, c in ipairs(conns) do task.spawn(c.Function) end
+	end)
+
+	isActivelyGrabbing = false
 end
 
-local function scanSinglePlot(plot)
-	if isMyBase(plot.Name) then return end
-
-	local podiums = plot:FindFirstChild("AnimalPodiums")
-	if not podiums then return end
-
-	for _, podium in ipairs(podiums:GetChildren()) do
-		if podium:IsA("Model") then
-			table.insert(allAnimalsCache,{
-				plot = plot.Name,
-				slot = podium.Name,
-				worldPosition = podium:GetPivot().Position,
-				uid = plot.Name.."_"..podium.Name
-			})
-		end
-	end
-end
-
-local function initializeScanner()
-	local plots = workspace:WaitForChild("Plots",10)
+local function scanPlots()
+	local plots = workspace:FindFirstChild("Plots")
 	if not plots then return end
-
-	allAnimalsCache = {}
+	
+	local newCache = {}
 	for _, plot in ipairs(plots:GetChildren()) do
-		if plot:IsA("Model") then
-			scanSinglePlot(plot)
-		end
-	end
-
-	task.spawn(function()
-		while true do
-			task.wait(5)
-			allAnimalsCache = {}
-			for _, plot in ipairs(plots:GetChildren()) do
-				if plot:IsA("Model") then
-					scanSinglePlot(plot)
+		if plot:IsA("Model") and not isMyBase(plot.Name) then
+			local podiums = plot:FindFirstChild("AnimalPodiums")
+			if podiums then
+				for _, podium in ipairs(podiums:GetChildren()) do
+					table.insert(newCache, {
+						plot = plot.Name,
+						slot = podium.Name,
+						worldPosition = podium:GetPivot().Position,
+						uid = plot.Name.."_"..podium.Name
+					})
 				end
 			end
 		end
-	end)
+	end
+	allAnimalsCache = newCache
 end
 
-local function getNearestAnimal()
-	local hrp = getHRP()
-	if not hrp then return nil end
-
-	local nearest = nil
-	local minDist = math.huge
-
-	for _, animal in ipairs(allAnimalsCache) do
-		if not isMyBase(animal.plot) then
-			local d = (hrp.Position - animal.worldPosition).Magnitude
-			if d < minDist then
-				minDist = d
-				nearest = animal
-			end
-		end
-	end
-
-	if minDist <= GRAB_RADIUS then
-		return nearest
-	end
-end
-
-initializeScanner()
-
-RunService.Heartbeat:Connect(function()
-	if not AutoGrabEnabled then return end
-	if isActivelyGrabbing then return end
-	if tick() - lastGrabAttempt < GRAB_COOLDOWN then return end
-
-	local target = getNearestAnimal()
-	if not target then return end
-
-	local prompt = findPromptForAnimal(target)
-	if prompt and prompt.Enabled then
-		lastGrabAttempt = tick()
-		executeGrab(prompt)
+-- Scanner toutes les 5 secondes
+task.spawn(function()
+	while true do
+		scanPlots()
+		task.wait(5)
 	end
 end)
 
--- pour la partie 2 (le bouton)
-_G.SetAutoGrab = function(state)
-	AutoGrabEnabled = state
-end
+-- BOUCLE PRINCIPALE
+RunService.Heartbeat:Connect(function()
+	if not isOn then return end -- ARRÊTE TOUT SI LE BOUTON EST SUR OFF
+	if isActivelyGrabbing then return end
+	if tick() - lastGrabAttempt < GRAB_COOLDOWN then return end
 
-local function createToggle(text)
-	local buttonFrame = Instance.new("Frame")
-	buttonFrame.Size = UDim2.new(1, 0, 0, 40)
-	buttonFrame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	buttonFrame.BackgroundTransparency = 0.6
-	buttonFrame.Parent = container
-	
-	local btnCorner = Instance.new("UICorner")
-	btnCorner.CornerRadius = UDim.new(0, 6)
-	btnCorner.Parent = buttonFrame
-	
-	local label = Instance.new("TextLabel")
-	label.Text = text
-	label.Size = UDim2.new(0.7, 0, 1, 0)
-	label.Position = UDim2.new(0, 15, 0, 0)
-	label.BackgroundTransparency = 1
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Font = Enum.Font.GothamSemibold
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextSize = 14
-	label.Parent = buttonFrame
-	
-	local toggleBtn = Instance.new("TextButton")
-	toggleBtn.Text = ""
-	toggleBtn.Size = UDim2.new(0, 40, 0, 20)
-	toggleBtn.Position = UDim2.new(1, -55, 0.5, -10)
-	toggleBtn.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
-	toggleBtn.Parent = buttonFrame
-	
-	local toggleCorner = Instance.new("UICorner")
-	toggleCorner.CornerRadius = UDim.new(1, 0)
-	toggleCorner.Parent = toggleBtn
-	
-	local circle = Instance.new("Frame")
-	circle.Size = UDim2.new(0, 16, 0, 16)
-	circle.Position = UDim2.new(0, 2, 0.5, -8)
-	circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	circle.Parent = toggleBtn
-	
-	local circleCorner = Instance.new("UICorner")
-	circleCorner.CornerRadius = UDim.new(1, 0)
-	circleCorner.Parent = circle
-	
-	local active = false
-	
-	toggleBtn.MouseButton1Click:Connect(function()
-		active = not active
-		
-		local goalColor = active and Color3.fromRGB(0, 255, 128) or Color3.fromRGB(60, 60, 60)
-		local goalPos = active and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8)
-		
-		TweenService:Create(toggleBtn, TweenInfo.new(0.2), {BackgroundColor3 = goalColor}):Play()
-		TweenService:Create(circle, TweenInfo.new(0.2), {Position = goalPos}):Play()
+	local hrp = getHRP()
+	if not hrp then return end
 
-		if text == "Auto Grab Brainrot" then
-			if _G.SetAutoGrab then
-				_G.SetAutoGrab(active)
+	for _, animal in ipairs(allAnimalsCache) do
+		local dist = (hrp.Position - animal.worldPosition).Magnitude
+		if dist <= GRAB_RADIUS then
+			local prompt = findPromptForAnimal(animal)
+			if prompt and prompt.Enabled then
+				lastGrabAttempt = tick()
+				executeGrab(prompt)
+				break
 			end
 		end
-	end)
-end
+	end
+end)
