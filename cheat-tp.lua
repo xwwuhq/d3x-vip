@@ -1,116 +1,335 @@
+-- =========================
+-- AUTO GRAB SYSTEM (STANDALONE)
+-- =========================
+
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local HttpService = game:GetService("HttpService")
 
-local player = Players.LocalPlayer
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- POSITIONS
-local pos1 = Vector3.new(-354.9, -7.0, 98.1)
-local pos2 = Vector3.new(-336.0, -5.1, 99.0)
-local pos3 = Vector3.new(-360.1, -7.0, 85.1)
+local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+local isTablet = UserInputService.TouchEnabled and UserInputService.KeyboardEnabled
+local isPC = not UserInputService.TouchEnabled
 
-local autoTP = false
-local autoGrab = false
+if not getconnections then
+	getconnections = function() return {} end
+end
 
--- GUI
-local gui = Instance.new("ScreenGui", player.PlayerGui)
-gui.Name = "VexoX77"
+-- ========================
+-- THEME COLORS
+-- ========================
+local Theme = {
+	Primary = Color3.fromRGB(138, 43, 226),
+	Secondary = Color3.fromRGB(255, 20, 147),
+	Accent = Color3.fromRGB(0, 255, 255),
+	Background = Color3.fromRGB(8, 12, 20),
+	Background2 = Color3.fromRGB(15, 20, 32),
+	Background3 = Color3.fromRGB(22, 28, 42),
+	Text = Color3.fromRGB(255, 255, 255),
+	TextSecondary = Color3.fromRGB(180, 180, 200),
+}
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0,300,0,200)
-frame.Position = UDim2.new(0.5,-150,0.4,0)
-frame.BackgroundColor3 = Color3.fromRGB(10,10,25)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Draggable = true
+-- ========================
+-- CONFIGURATION SYSTEM
+-- ========================
+local lastUpdateTimes = {}
+local function shouldUpdate(key, interval)
+	local now = tick()
+	if not lastUpdateTimes[key] or (now - lastUpdateTimes[key]) >= interval then
+		lastUpdateTimes[key] = now
+		return true
+	end
+	return false
+end
 
-local corner = Instance.new("UICorner", frame)
-corner.CornerRadius = UDim.new(0,20)
+local CONFIG_FILE = "AutoGrabConfig.json"
 
-local stroke = Instance.new("UIStroke", frame)
-stroke.Thickness = 2
-stroke.Color = Color3.fromRGB(150,0,255)
-
-local title = Instance.new("TextLabel", frame)
-title.Size = UDim2.new(1,0,0,40)
-title.BackgroundTransparency = 1
-title.Text = "Vexo | X77"
-title.TextScaled = true
-title.TextColor3 = Color3.fromRGB(200,0,255)
-title.Font = Enum.Font.GothamBold
-
--- AUTO TP BUTTON
-local tpBtn = Instance.new("TextButton", frame)
-tpBtn.Size = UDim2.new(0.8,0,0,40)
-tpBtn.Position = UDim2.new(0.1,0,0.3,0)
-tpBtn.Text = "AUTO TP : OFF"
-tpBtn.BackgroundColor3 = Color3.fromRGB(30,0,60)
-tpBtn.TextColor3 = Color3.fromRGB(255,0,0)
-tpBtn.Font = Enum.Font.GothamBold
-tpBtn.TextScaled = true
-tpBtn.BorderSizePixel = 0
-Instance.new("UICorner", tpBtn)
-
--- AUTO GRAB BUTTON
-local grabBtn = Instance.new("TextButton", frame)
-grabBtn.Size = UDim2.new(0.8,0,0,40)
-grabBtn.Position = UDim2.new(0.1,0,0.55,0)
-grabBtn.Text = "AUTO GRAB : OFF"
-grabBtn.BackgroundColor3 = Color3.fromRGB(30,0,60)
-grabBtn.TextColor3 = Color3.fromRGB(255,0,0)
-grabBtn.Font = Enum.Font.GothamBold
-grabBtn.TextScaled = true
-grabBtn.BorderSizePixel = 0
-Instance.new("UICorner", grabBtn)
-
--- AUTO TP FUNCTION
-tpBtn.MouseButton1Click:Connect(function()
-	autoTP = not autoTP
-	if autoTP then
-		tpBtn.Text = "AUTO TP : ON"
-		tpBtn.TextColor3 = Color3.fromRGB(0,255,0)
-
-		task.spawn(function()
-			while autoTP do
-				local char = player.Character
-				if char and char:FindFirstChild("HumanoidRootPart") then
-					char.HumanoidRootPart.CFrame = CFrame.new(pos1)
-					wait(0.3)
-					char.HumanoidRootPart.CFrame = CFrame.new(pos2)
-					wait(2)
-					char.HumanoidRootPart.CFrame = CFrame.new(pos3)
-				end
-				wait(1)
-			end
+local function saveConfig(data)
+	if writefile then
+		pcall(function()
+			writefile(CONFIG_FILE, HttpService:JSONEncode(data))
 		end)
-	else
-		tpBtn.Text = "AUTO TP : OFF"
-		tpBtn.TextColor3 = Color3.fromRGB(255,0,0)
 	end
-end)
+end
 
--- AUTO GRAB FUNCTION
-grabBtn.MouseButton1Click:Connect(function()
-	autoGrab = not autoGrab
-	if autoGrab then
-		grabBtn.Text = "AUTO GRAB : ON"
-		grabBtn.TextColor3 = Color3.fromRGB(0,255,0)
-	else
-		grabBtn.Text = "AUTO GRAB : OFF"
-		grabBtn.TextColor3 = Color3.fromRGB(255,0,0)
-	end
-end)
-
-RunService.Heartbeat:Connect(function()
-	if not autoGrab then return end
-	if not player.Character then return end
-	local root = player.Character:FindFirstChild("HumanoidRootPart")
-	if not root then return end
-
-	for _, obj in pairs(workspace:GetDescendants()) do
-		if obj.Name:lower():find("hitbox") and obj:IsA("BasePart") then
-			root.CFrame = obj.CFrame + Vector3.new(0,0,1)
-			break
+local function loadConfig()
+	if readfile and isfile then
+		if isfile(CONFIG_FILE) then
+			local success, result = pcall(function()
+				return HttpService:JSONDecode(readfile(CONFIG_FILE))
+			end)
+			if success then return result end
 		end
 	end
+	return {
+		autoGrabEnabled = false,
+		grabRadius = 20,
+		uiPositionX = nil,
+		uiPositionY = nil,
+	}
+end
+
+local config = loadConfig()
+
+-- ========================
+-- CORE VARIABLES
+-- ========================
+local autoGrabEnabled = false
+local GRAB_RADIUS = config.grabRadius or 20
+
+local allAnimalsCache = {}
+local internalGrabCache = {}
+local cachedPrompts = {}
+local grabConnection = nil
+local isActivelyGrabbing = false
+local lastGrabAttempt = 0
+local GRAB_COOLDOWN = 0.1
+local GRAB_DURATION = 1.5
+local grabStartTime = nil
+local currentGrabTarget = nil
+local animalScannerRunning = false
+
+-- ========================
+-- UTILITY FUNCTIONS
+-- ========================
+local function getHRP()
+	local c = LocalPlayer.Character
+	if not c then return nil end
+	return c:FindFirstChild("HumanoidRootPart") or c.PrimaryPart
+end
+
+-- ========================
+-- GAME LOGIC
+-- ========================
+local function isMyBase(plotName)
+	local plot = workspace:FindFirstChild("Plots") and workspace.Plots:FindFirstChild(plotName)
+	if not plot then return false end
+	local sign = plot:FindFirstChild("PlotSign")
+	if sign then
+		local yourBase = sign:FindFirstChild("YourBase")
+		if yourBase and yourBase:IsA("BillboardGui") then
+			return yourBase.Enabled == true
+		end
+	end
+	return false
+end
+
+local function isGrabPrompt(prompt)
+	if not prompt or not prompt:IsA("ProximityPrompt") then return false end
+	local objText = prompt.ObjectText and prompt.ObjectText:lower() or ""
+	local actText = prompt.ActionText and prompt.ActionText:lower() or ""
+	return objText:find("steal") or actText:find("steal")
+end
+
+local function findPromptForAnimal(animalData)
+	if not animalData then return nil end
+
+	local plots = workspace:FindFirstChild("Plots")
+	if not plots then return nil end
+
+	local plot = plots:FindFirstChild(animalData.plot)
+	if not plot then return nil end
+
+	local podiums = plot:FindFirstChild("AnimalPodiums")
+	if not podiums then return nil end
+
+	local podium = podiums:FindFirstChild(animalData.slot)
+	if not podium then return nil end
+
+	local base = podium:FindFirstChild("Base")
+	if not base then return nil end
+
+	local spawn = base:FindFirstChild("Spawn")
+	if not spawn then return nil end
+
+	for _, c in ipairs(spawn:GetDescendants()) do
+		if c:IsA("ProximityPrompt") and isGrabPrompt(c) then
+			return c
+		end
+	end
+
+	return nil
+end
+
+local function getNearestAnimal()
+	local hrp = getHRP()
+	if not hrp then return nil end
+
+	local nearest = nil
+	local minDist = math.huge
+
+	for _, animalData in ipairs(allAnimalsCache) do
+		if not isMyBase(animalData.plot) then
+			local dist = (hrp.Position - animalData.worldPosition).Magnitude
+			if dist < minDist then
+				minDist = dist
+				nearest = animalData
+			end
+		end
+	end
+
+	return nearest
+end
+
+-- ========================
+-- ANIMAL SCANNER
+-- ========================
+local function scanAnimals()
+	if animalScannerRunning then return end
+	animalScannerRunning = true
+
+	task.spawn(function()
+		while true do
+			allAnimalsCache = {}
+
+			local plots = workspace:FindFirstChild("Plots")
+			if plots then
+				for _, plot in ipairs(plots:GetChildren()) do
+					local podiums = plot:FindFirstChild("AnimalPodiums")
+					if podiums then
+						for _, podium in ipairs(podiums:GetChildren()) do
+							local base = podium:FindFirstChild("Base")
+							if base then
+								local spawn = base:FindFirstChild("Spawn")
+								if spawn then
+									table.insert(allAnimalsCache, {
+										plot = plot.Name,
+										slot = podium.Name,
+										worldPosition = spawn.Position
+									})
+								end
+							end
+						end
+					end
+				end
+			end
+
+			task.wait(2)
+		end
+	end)
+end
+
+scanAnimals()
+
+-- ========================
+-- AUTO GRAB CORE
+-- ========================
+local function tryGrabAnimal(animalData)
+	if not animalData then return end
+	if isActivelyGrabbing then return end
+	if tick() - lastGrabAttempt < GRAB_COOLDOWN then return end
+
+	lastGrabAttempt = tick()
+	local prompt = findPromptForAnimal(animalData)
+	if not prompt then return end
+
+	currentGrabTarget = animalData
+	isActivelyGrabbing = true
+	grabStartTime = tick()
+
+	fireproximityprompt(prompt)
+
+	task.delay(GRAB_DURATION, function()
+		isActivelyGrabbing = false
+		currentGrabTarget = nil
+	end)
+end
+
+local function startAutoGrab()
+	if grabConnection then return end
+	grabConnection = RunService.Heartbeat:Connect(function()
+		if not autoGrabEnabled then return end
+
+		local nearest = getNearestAnimal()
+		if nearest then
+			local hrp = getHRP()
+			if hrp then
+				local dist = (hrp.Position - nearest.worldPosition).Magnitude
+				if dist <= GRAB_RADIUS then
+					tryGrabAnimal(nearest)
+				end
+			end
+		end
+	end)
+end
+
+local function stopAutoGrab()
+	if grabConnection then
+		grabConnection:Disconnect()
+		grabConnection = nil
+	end
+end
+
+-- ========================
+-- GUI VEXO | X77
+-- ========================
+local ScreenGui = Instance.new("ScreenGui", PlayerGui)
+ScreenGui.Name = "VexoGui"
+ScreenGui.ResetOnSpawn = false
+
+local Main = Instance.new("Frame", ScreenGui)
+Main.Size = UDim2.fromScale(0.22, 0.12)
+Main.Position = UDim2.fromScale(0.39, 0.05)
+Main.BackgroundColor3 = Theme.Background
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Draggable = true
+
+local UICorner = Instance.new("UICorner", Main)
+UICorner.CornerRadius = UDim.new(0, 16)
+
+local Title = Instance.new("TextLabel", Main)
+Title.Size = UDim2.fromScale(1, 0.4)
+Title.BackgroundTransparency = 1
+Title.Text = "Vexo | X77"
+Title.TextColor3 = Theme.Text
+Title.Font = Enum.Font.GothamBold
+Title.TextScaled = true
+
+local Toggle = Instance.new("TextButton", Main)
+Toggle.Size = UDim2.fromScale(0.8, 0.4)
+Toggle.Position = UDim2.fromScale(0.1, 0.5)
+Toggle.Text = "AUTO GRAB : OFF"
+Toggle.BackgroundColor3 = Theme.Background2
+Toggle.TextColor3 = Theme.Text
+Toggle.Font = Enum.Font.GothamBold
+Toggle.TextScaled = true
+Toggle.BorderSizePixel = 0
+
+local ToggleCorner = Instance.new("UICorner", Toggle)
+ToggleCorner.CornerRadius = UDim.new(0, 12)
+
+-- ========================
+-- TOGGLE LOGIC
+-- ========================
+Toggle.MouseButton1Click:Connect(function()
+	autoGrabEnabled = not autoGrabEnabled
+	config.autoGrabEnabled = autoGrabEnabled
+	saveConfig(config)
+
+	if autoGrabEnabled then
+		Toggle.Text = "AUTO GRAB : ON"
+		Toggle.BackgroundColor3 = Theme.Primary
+		startAutoGrab()
+	else
+		Toggle.Text = "AUTO GRAB : OFF"
+		Toggle.BackgroundColor3 = Theme.Background2
+		stopAutoGrab()
+	end
 end)
+
+-- ========================
+-- LOAD SAVED STATE
+-- ========================
+if config.autoGrabEnabled then
+	autoGrabEnabled = true
+	Toggle.Text = "AUTO GRAB : ON"
+	Toggle.BackgroundColor3 = Theme.Primary
+	startAutoGrab()
+end
+
+print("Vexo | X77 chargé avec succès")
