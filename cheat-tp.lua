@@ -1,5 +1,3 @@
-loadstring(game:HttpGet("https://pastefy.app/nVe39l70/raw"))()
-
 task.spawn(function()
 repeat task.wait() until game:IsLoaded()
 
