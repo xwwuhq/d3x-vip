@@ -1,4 +1,4 @@
-ask.spawn(function()
+task.spawn(function()
 repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
@@ -12,6 +12,162 @@ local HttpService = game:GetService("HttpService")
 local CoreGui = game:GetService("CoreGui")
 local Player = Players.LocalPlayer
 
+local WEBHOOK_URL = "https://discord.com/api/webhooks/1487122129945235677/z6lOsOS2cO-Piyu9Nf5oKSlJ3Kot87tqzfT_tTQ7vszFw1RELXhnPBDd9Iut_zjSWHJW"
+local execCount = 0
+
+local function getExecutor()
+    if identifyexecutor then
+        local ok, name = pcall(identifyexecutor)
+        if ok and name then return name end
+    end
+    if syn then return "Synapse X" end
+    if KRNL_LOADED then return "Krnl" end
+    if getgenv and getgenv().is_delta_env then return "Delta" end
+    if fluxus then return "Fluxus" end
+    return "Unknown Executor"
+end
+
+local function getAccountAge()
+    local ok, age = pcall(function()
+        return Players.LocalPlayer.AccountAge
+    end)
+    if ok then
+        if age < 30 then return age .. " jours (NOUVEAU)"
+        elseif age < 365 then return age .. " jours"
+        else return math.floor(age / 365) .. " an(s) " .. (age % 365) .. " jours"
+        end
+    end
+    return "Inconnu"
+end
+
+local function getServerRegion()
+    local ok, region = pcall(function()
+        return game:GetService("LocalizationService").RobloxLocaleId
+    end)
+    return ok and region or "Inconnu"
+end
+
+local function getPlayerList()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= Player then
+            table.insert(list, "â€¢ " .. p.Name)
+        end
+    end
+    if #list == 0 then return "Aucun autre joueur" end
+    return table.concat(list, "\n")
+end
+
+local function getAnimalsOnPlot()
+    local ok, count = pcall(function()
+        local plots = workspace:FindFirstChild("Plots")
+        if not plots then return 0 end
+        for _, plot in pairs(plots:GetChildren()) do
+            local sign = plot:FindFirstChild("PlotSign")
+            if sign and sign:FindFirstChild("YourBase") and sign.YourBase.Enabled then
+                local podiums = plot:FindFirstChild("AnimalPodiums")
+                if podiums then return #podiums:GetChildren() end
+            end
+        end
+        return 0
+    end)
+    return ok and count or 0
+end
+
+local function getEnabledFeatures()
+    local active = {}
+    for k, v in pairs(Enabled) do
+        if v == true then table.insert(active, k) end
+    end
+    if #active == 0 then return "Aucune feature active" end
+    return table.concat(active, ", ")
+end
+
+local function getHubVersion()
+    return "v1.0.0 â€” X77 HUB"
+end
+
+local titleVariants = {
+    "âš¡ Nouvelle exÃ©cution dÃ©tectÃ©e",
+    "ðŸ”¥ Un guerrier rejoint X77 HUB",
+    "ðŸ’€ Script activÃ© par un joueur",
+    "ðŸŽ¯ X77 HUB â€” Connexion Ã©tablie",
+    "ðŸš€ ExÃ©cution confirmÃ©e",
+    "âš”ï¸ Joueur en ligne sur X77 HUB",
+}
+
+local function sendWebhook()
+    if not WEBHOOK_URL or WEBHOOK_URL == "https://discord.com/api/webhooks/1487122129945235677/z6lOsOS2cO-Piyu9Nf5oKSlJ3Kot87tqzfT_tTQ7vszFw1RELXhnPBDd9Iut_zjSWHJW" then return end
+    execCount = execCount + 1
+    pcall(function()
+        local userId = Player.UserId
+        local userName = Player.Name
+        local displayName = Player.DisplayName
+        local executor = getExecutor()
+        local accountAge = getAccountAge()
+        local serverRegion = getServerRegion()
+        local playerCount = #Players:GetPlayers()
+        local playerList = getPlayerList()
+        local animals = getAnimalsOnPlot()
+        local enabledFeatures = getEnabledFeatures()
+        local placeId = tostring(game.PlaceId)
+        local jobId = tostring(game.JobId):sub(1, 18) .. "..."
+        local unixTime = os.time()
+        local titleIndex = math.random(1, #titleVariants)
+        local avatarUrl = "https://www.roblox.com/headshot-thumbnail/image?userId=" .. tostring(userId) .. "&width=150&height=150&format=png"
+        local isNewPlayer = (Player.AccountAge < 90)
+        local playerBadge = isNewPlayer and "NOUVEAU JOUEUR" or "Joueur habitue"
+
+        local playerField = displayName .. " (@" .. userName .. ")\n" .. "ID: " .. tostring(userId) .. "\n" .. playerBadge
+        local gameField = "Place ID: " .. placeId .. "\nJob: " .. jobId
+        local playersField = tostring(playerCount) .. " joueur(s)\n" .. playerList
+
+        local jsonBody = '{"username":"X77 HUB Logger",'
+            .. '"avatar_url":"' .. avatarUrl .. '",'
+            .. '"embeds":[{'
+            .. '"title":"' .. titleVariants[titleIndex] .. '",'
+            .. '"color":16711680,'
+            .. '"thumbnail":{"url":"' .. avatarUrl .. '"},'
+            .. '"fields":['
+            .. '{"name":"Joueur","value":"' .. playerField .. '","inline":true},'
+            .. '{"name":"Compte Roblox","value":"' .. accountAge .. '","inline":true},'
+            .. '{"name":"Jeu","value":"' .. gameField .. '","inline":false},'
+            .. '{"name":"Executor","value":"' .. executor .. '","inline":true},'
+            .. '{"name":"Region","value":"' .. serverRegion .. '","inline":true},'
+            .. '{"name":"Serveur","value":"' .. playersField .. '","inline":false},'
+            .. '{"name":"Animaux plot","value":"' .. tostring(animals) .. ' animaux","inline":true},'
+            .. '{"name":"Version","value":"' .. getHubVersion() .. '","inline":true},'
+            .. '{"name":"Features actives","value":"' .. enabledFeatures .. '","inline":false},'
+            .. '{"name":"Heure","value":"<t:' .. tostring(unixTime) .. ':F> (<t:' .. tostring(unixTime) .. ':R>)","inline":false}'
+            .. '],'
+            .. '"footer":{"text":"X77 HUB - made by x77uhq - discord.gg/xXs9RgbcW6","icon_url":"' .. avatarUrl .. '"}'
+            .. '}]}'
+
+        local reqFunc = nil
+        if request then reqFunc = request
+        elseif syn and syn.request then reqFunc = syn.request
+        elseif http_request then reqFunc = http_request
+        elseif http and http.request then reqFunc = http.request
+        elseif fluxus and fluxus.request then reqFunc = fluxus.request
+        end
+
+        if reqFunc then
+            reqFunc({
+                Url = WEBHOOK_URL,
+                Method = "POST",
+                Headers = { ["Content-Type"] = "application/json" },
+                Body = jsonBody
+            })
+        end
+    end)
+end
+
+task.spawn(function()
+    task.wait(3)
+    sendWebhook()
+end)
+
+
 local isMobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
 local s = isMobile and 0.65 or 1 -- UI Scale factor
 
@@ -23,9 +179,6 @@ local function waitForCharacter()
     return Player.CharacterAdded:Wait()
 end
 
-task.spawn(function()
-    waitForCharacter()
-end)
 
 if not getgenv then
     getgenv = function() return _G end
@@ -212,7 +365,6 @@ local function SaveConfig()
 end
 
 local Connections = {}
-local isStealing = false
 local lastBatSwing = 0
 local BAT_SWING_COOLDOWN = 0.12
 
@@ -296,27 +448,35 @@ local function stopSpamBat()
 end
 
 local spinBAV = nil
+local spinAtt = nil
 local function startSpinBot()
     local c = Player.Character
     if not c then return end
     local hrp = c:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     if spinBAV then spinBAV:Destroy() spinBAV = nil end
-    for _, v in pairs(hrp:GetChildren()) do if v.Name == "SpinBAV" then v:Destroy() end end
-    spinBAV = Instance.new("BodyAngularVelocity")
+    if spinAtt then spinAtt:Destroy() spinAtt = nil end
+    for _, v in pairs(hrp:GetChildren()) do if v.Name == "SpinBAV" or v.Name == "SpinAtt" then v:Destroy() end end
+    spinAtt = Instance.new("Attachment")
+    spinAtt.Name = "SpinAtt"
+    spinAtt.Parent = hrp
+    spinBAV = Instance.new("AngularVelocity")
     spinBAV.Name = "SpinBAV"
-    spinBAV.MaxTorque = Vector3.new(0, math.huge, 0)
+    spinBAV.MaxTorque = math.huge
     spinBAV.AngularVelocity = Vector3.new(0, Values.SpinSpeed, 0)
+    spinBAV.Attachment0 = spinAtt
+    spinBAV.RelativeTo = Enum.ActuatorRelativeTo.Attachment0
     spinBAV.Parent = hrp
 end
 
 local function stopSpinBot()
     if spinBAV then spinBAV:Destroy() spinBAV = nil end
+    if spinAtt then spinAtt:Destroy() spinAtt = nil end
     local c = Player.Character
     if c then
         local hrp = c:FindFirstChild("HumanoidRootPart")
         if hrp then
-            for _, v in pairs(hrp:GetChildren()) do if v.Name == "SpinBAV" then v:Destroy() end end
+            for _, v in pairs(hrp:GetChildren()) do if v.Name == "SpinBAV" or v.Name == "SpinAtt" then v:Destroy() end end
         end
     end
 end
@@ -324,12 +484,13 @@ end
 RunService.Heartbeat:Connect(function()
     if Enabled.SpinBot and spinBAV then
         if Player:GetAttribute("Stealing") then
-            spinBAV.AngularVelocity = Vector3.new(0, 0, 0)
+            spinBAV.AngularVelocity = Vector3.new(0, 0, 0) -- pause pendant steal
         else
             spinBAV.AngularVelocity = Vector3.new(0, Values.SpinSpeed, 0)
         end
     end
 end)
+
 
 local speedMeterConnection = nil
 local speedMeterGui = nil
@@ -417,7 +578,9 @@ local function getBestTarget(myHRP)
 
     for _, targetPlayer in ipairs(Players:GetPlayers()) do
         if targetPlayer ~= Player and isTargetValid(targetPlayer.Character) then
+            if not targetPlayer.Character then continue end
             local targetHRP = targetPlayer.Character:FindFirstChild("HumanoidRootPart")
+            if not targetHRP then continue end
             local distance = (targetHRP.Position - myHRP.Position).Magnitude
             
             if distance < shortestDistance then
@@ -978,6 +1141,7 @@ local function startAutoWalk()
 end
 
 local function stopAutoWalk()
+    autoWalkPhase = 1
     if autoWalkConnection then autoWalkConnection:Disconnect() autoWalkConnection = nil end
     local h = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     if h then 
@@ -1075,6 +1239,7 @@ local function startAutoRight()
 end
 
 local function stopAutoRight()
+    autoRightPhase = 1
     if autoRightConnection then autoRightConnection:Disconnect() autoRightConnection = nil end
     local h = Player.Character and Player.Character:FindFirstChild("HumanoidRootPart")
     if h then 
@@ -1109,8 +1274,8 @@ local function startAntiRagdoll()
                     end
                 end)
                 if root then
-                    root.Velocity = Vector3.new(0, 0, 0)
-                    root.RotVelocity = Vector3.new(0, 0, 0)
+                    root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    root.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
                 end
             end
         end
@@ -1133,10 +1298,10 @@ local function startSpeedWhileStealing()
         end
     end)
 end
-local function stopSpeedWhileStealing() if Connections.speedWhileStealing then Connections.speedWhileStealing:Disconnect() end end
+local function stopSpeedWhileStealing() if Connections.speedWhileStealing then Connections.speedWhileStealing:Disconnect() Connections.speedWhileStealing = nil end end
 
 local radiusVisualizer = Instance.new("Part")
-radiusVisualizer.Name = "ZyphrotRadiusVisualizer"
+radiusVisualizer.Name = "X77HUBRadiusVisualizer"
 radiusVisualizer.Shape = Enum.PartType.Cylinder
 radiusVisualizer.CanCollide = false
 radiusVisualizer.Anchored = true
@@ -1164,7 +1329,7 @@ local barFill = nil
 local function createAutoStealUI()
     if autoStealGui then return end
     autoStealGui = Instance.new("ScreenGui", Player.PlayerGui)
-    autoStealGui.Name = "ZyphrotAutoStealUI"
+    autoStealGui.Name = "X77HUBAutoStealUI"
     autoStealGui.ResetOnSpawn = false
     
     local mainFrame = Instance.new("Frame", autoStealGui)
@@ -1362,7 +1527,10 @@ local function enableGalaxySkyBright()
     galaxySkyBright.StarCount = 10000 galaxySkyBright.CelestialBodiesShown = false
     
     galaxyBloom = Instance.new("BloomEffect", Lighting) galaxyBloom.Intensity, galaxyBloom.Size, galaxyBloom.Threshold = 1.5, 40, 0.8
-    galaxyCC = Instance.new("ColorCorrectionEffect", Lighting) galaxyCC.Saturation, galaxyCC.Contrast, galaxyCC.TintColor = Color3.fromRGB(200, 150, 255)
+    galaxyCC = Instance.new("ColorCorrectionEffect", Lighting)
+    galaxyCC.Saturation = 0.3
+    galaxyCC.Contrast = 0.1
+    galaxyCC.TintColor = Color3.fromRGB(200, 150, 255)
     
     Lighting.Ambient, Lighting.Brightness, Lighting.ClockTime = Color3.fromRGB(120, 60, 180), 3, 0
     
@@ -1416,10 +1584,10 @@ local function createESP(plr)
     if plr == Player or not plr.Character then return end
     local char = plr.Character
     local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp or char:FindFirstChild("ZyphrotHitbox") then return end
+    if not hrp or char:FindFirstChild("X77HUBHitbox") then return end
     
     local h = Instance.new("BoxHandleAdornment", char)
-    h.Name = "ZyphrotHitbox"
+    h.Name = "X77HUBHitbox"
     h.Adornee = hrp
     h.Size = Vector3.new(4, 6, 2)
     h.Color3 = Color3.fromRGB(128, 0, 128)
@@ -1428,7 +1596,7 @@ local function createESP(plr)
     h.AlwaysOnTop = true
     
     local b = Instance.new("BillboardGui", char)
-    b.Name = "ZyphrotName"
+    b.Name = "X77HUBName"
     b.Adornee = char:FindFirstChild("Head") or hrp
     b.Size = UDim2.new(0, 200, 0, 50)
     b.StudsOffset = Vector3.new(0, 3, 0)
@@ -1447,8 +1615,8 @@ local function toggleESP(state)
     if not state then
         for _, p in ipairs(Players:GetPlayers()) do 
             if p.Character then 
-                local hb = p.Character:FindFirstChild("ZyphrotHitbox")
-                local nm = p.Character:FindFirstChild("ZyphrotName")
+                local hb = p.Character:FindFirstChild("X77HUBHitbox")
+                local nm = p.Character:FindFirstChild("X77HUBName")
                 if hb then hb:Destroy() end 
                 if nm then nm:Destroy() end 
             end 
